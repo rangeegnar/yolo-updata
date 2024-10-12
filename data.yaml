@@ -1,0 +1,11 @@
+# dataset path
+
+train: D:/YOLOV8/ultralytics-main/dataset/images/train
+val: D:/YOLOV8/ultralytics-main/dataset/images/val
+test: D:/YOLOV8/ultralytics-main/dataset/images/test
+
+# number of classes
+nc: 1
+
+# class names
+names: ['person']
