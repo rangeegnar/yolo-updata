@@ -11,57 +11,15 @@ import torch
 import torch.nn as nn
 
 from ultralytics.nn.modules import (
-    AIFI,
-    C1,
-    C2,
-    C2PSA,
-    C3,
-    C3TR,
-    ELAN1,
-    OBB,
-    PSA,
-    SPP,
-    SPPELAN,
-    SPPF,
-    AConv,
-    ADown,
-    Bottleneck,
-    BottleneckCSP,
-    C2f,
-    C2fAttn,
-    C2fCIB,
-    C2fPSA,
-    C3Ghost,
-    C3k2,
-    C3x,
-    CBFuse,
-    CBLinear,
-    Classify,
-    Concat,
-    Conv,
-    Conv2,
-    ConvTranspose,
-    Detect,
-    DWConv,
-    DWConvTranspose2d,
-    Focus,
-    GhostBottleneck,
-    GhostConv,
-    HGBlock,
-    HGStem,
-    ImagePoolingAttn,
-    Pose,
-    RepC3,
-    RepConv,
-    RepNCSPELAN4,
-    RepVGGDW,
-    ResNetLayer,
-    RTDETRDecoder,
-    SCDown,
-    Segment,
-    WorldDetect,
-    v10Detect,
+    AIFI, C1, C2, C2PSA, C3, C3TR, ELAN1, OBB, PSA, SPP, SPPELAN, SPPF, AConv,
+    ADown, Bottleneck, BottleneckCSP, C2f, C2fAttn, C2fCIB, C2fPSA, C3Ghost,
+    C3k2, C3x, CBFuse, CBLinear, Classify, Concat, Conv, Conv2, ConvTranspose,
+    Detect, DWConv, DWConvTranspose2d, Focus, GhostBottleneck, GhostConv, HGBlock,
+    HGStem, ImagePoolingAttn, Pose, RepC3, RepConv, RepNCSPELAN4, RepVGGDW,
+    ResNetLayer, RTDETRDecoder, SCDown, Segment, WorldDetect, v10Detect,
+    CBAM,
 )
+
 from ultralytics.utils import DEFAULT_CFG_DICT, DEFAULT_CFG_KEYS, LOGGER, colorstr, emojis, yaml_load
 from ultralytics.utils.checks import check_requirements, check_suffix, check_yaml
 from ultralytics.utils.loss import (
@@ -376,9 +334,9 @@ class DetectionModel(BaseModel):
     def _clip_augmented(self, y):
         """Clip YOLO augmented inference tails."""
         nl = self.model[-1].nl  # number of detection layers (P3-P5)
-        g = sum(4**x for x in range(nl))  # grid points
+        g = sum(4 ** x for x in range(nl))  # grid points
         e = 1  # exclude layer count
-        i = (y[0].shape[-1] // g) * sum(4**x for x in range(e))  # indices
+        i = (y[0].shape[-1] // g) * sum(4 ** x for x in range(e))  # indices
         y[0] = y[0][..., :-i]  # large
         i = (y[-1].shape[-1] // g) * sum(4 ** (nl - 1 - x) for x in range(e))  # indices
         y[-1] = y[-1][..., i:]  # small
@@ -615,7 +573,7 @@ class WorldModel(DetectionModel):
             import clip
 
         if (
-            not getattr(self, "clip_model", None) and cache_clip_model
+                not getattr(self, "clip_model", None) and cache_clip_model
         ):  # for backwards compatibility of models lacking clip_model attribute
             self.clip_model = clip.load("ViT-B/32")[0]
         model = self.clip_model if cache_clip_model else clip.load("ViT-B/32")[0]
@@ -816,16 +774,16 @@ def torch_safe_load(weight, safe_only=False):
     file = attempt_download_asset(weight)  # search online if missing locally
     try:
         with temporary_modules(
-            modules={
-                "ultralytics.yolo.utils": "ultralytics.utils",
-                "ultralytics.yolo.v8": "ultralytics.models.yolo",
-                "ultralytics.yolo.data": "ultralytics.data",
-            },
-            attributes={
-                "ultralytics.nn.modules.block.Silence": "torch.nn.Identity",  # YOLOv9e
-                "ultralytics.nn.tasks.YOLOv10DetectionModel": "ultralytics.nn.tasks.DetectionModel",  # YOLOv10
-                "ultralytics.utils.loss.v10DetectLoss": "ultralytics.utils.loss.E2EDetectLoss",  # YOLOv10
-            },
+                modules={
+                    "ultralytics.yolo.utils": "ultralytics.utils",
+                    "ultralytics.yolo.v8": "ultralytics.models.yolo",
+                    "ultralytics.yolo.data": "ultralytics.data",
+                },
+                attributes={
+                    "ultralytics.nn.modules.block.Silence": "torch.nn.Identity",  # YOLOv9e
+                    "ultralytics.nn.tasks.YOLOv10DetectionModel": "ultralytics.nn.tasks.DetectionModel",  # YOLOv10
+                    "ultralytics.utils.loss.v10DetectLoss": "ultralytics.utils.loss.E2EDetectLoss",  # YOLOv10
+                },
         ):
             if safe_only:
                 # Load via custom pickle module
@@ -963,16 +921,17 @@ def parse_model(d, ch, verbose=True):  # model_dict, input_channels(3)
         for j, a in enumerate(args):  # 检查当前元素 a 是否是字符串类型(j 是索引) -> 整个for循环就是将对应字符串转化为本身的格式
             if isinstance(a, str):
                 try:
-                    args[j] = locals()[a] if a in locals()   else ast.literal_eval(a)
+                    args[j] = locals()[a] if a in locals() else ast.literal_eval(a)
                 except ValueError:
                     pass
 
         n = n_ = max(round(n * depth), 1) if n > 1 else n  # depth gain
         if m in {
-            Classify,Conv,ConvTranspose,GhostConv,Bottleneck,GhostBottleneck,SPP,SPPF,C2fPSA,C2PSA,DWConv,
-            Focus,BottleneckCSP,C1,C2,C2f,C3k2,RepNCSPELAN4,ELAN1,ADown,AConv,SPPELAN,C2fAttn,C3,C3TR,C3Ghost,
-            nn.ConvTranspose2d,DWConvTranspose2d,C3x,RepC3,PSA,SCDown,C2fCIB,}:
-            c1, c2 = ch[f], args[0]   # (f, n, m, args) -> [-1, 1, Conv, [64, 3, 2]] c1: 输入通道数, c2: 输出通道数
+            Classify, Conv, ConvTranspose, GhostConv, Bottleneck, GhostBottleneck, SPP, SPPF, C2fPSA, C2PSA, DWConv,
+            Focus, BottleneckCSP, C1, C2, C2f, C3k2, RepNCSPELAN4, ELAN1, ADown, AConv, SPPELAN, C2fAttn, C3, C3TR,
+            C3Ghost,
+            nn.ConvTranspose2d, DWConvTranspose2d, C3x, RepC3, PSA, SCDown, C2fCIB, }:
+            c1, c2 = ch[f], args[0]  # (f, n, m, args) -> [-1, 1, Conv, [64, 3, 2]] c1: 输入通道数, c2: 输出通道数
 
             if c2 != nc:  # if c2 not equal to number of classes (i.e. for Classify() output)
                 # make_divisible  =  
@@ -984,7 +943,7 @@ def parse_model(d, ch, verbose=True):  # model_dict, input_channels(3)
                 )  # num heads
 
             args = [c1, c2, *args[1:]]
-            if m in {BottleneckCSP,C1,C2,C2f,C3k2,C2fAttn,C3,C3TR,C3Ghost,C3x,RepC3,C2fPSA,C2fCIB,C2PSA,}:
+            if m in {BottleneckCSP, C1, C2, C2f, C3k2, C2fAttn, C3, C3TR, C3Ghost, C3x, RepC3, C2fPSA, C2fCIB, C2PSA, }:
                 args.insert(2, n)  # number of repeats
                 n = 1
             if m is C3k2 and scale in "mlx":  # for M/L/X sizes
@@ -1015,6 +974,11 @@ def parse_model(d, ch, verbose=True):  # model_dict, input_channels(3)
             args = [c1, c2, *args[1:]]
         elif m is CBFuse:
             c2 = ch[f[-1]]
+        elif m is CBAM:
+            c1, c2 = ch[f], args[0]
+            if c2 != nc:
+                c2 = make_divisible(min(c2, max_channels) * width, 8)
+            args = [c1, *args[1:]]
         else:
             c2 = ch[f]
 
