@@ -11,44 +11,13 @@ from .conv import Conv, DWConv, GhostConv, LightConv, RepConv, autopad
 from .transformer import TransformerBlock
 
 __all__ = (
-    "DFL",
-    "HGBlock",
-    "HGStem",
-    "SPP",
-    "SPPF",
-    "C1",
-    "C2",
-    "C3",
-    "C2f",
-    "C2fAttn",
-    "ImagePoolingAttn",
-    "ContrastiveHead",
-    "BNContrastiveHead",
-    "C3x",
-    "C3TR",
-    "C3Ghost",
-    "GhostBottleneck",
-    "Bottleneck",
-    "BottleneckCSP",
-    "Proto",
-    "RepC3",
-    "ResNetLayer",
-    "RepNCSPELAN4",
-    "ELAN1",
-    "ADown",
-    "AConv",
-    "SPPELAN",
-    "CBFuse",
-    "CBLinear",
-    "C3k2",
-    "C2fPSA",
-    "C2PSA",
-    "RepVGGDW",
-    "CIB",
-    "C2fCIB",
-    "Attention",
-    "PSA",
-    "SCDown",
+    "DFL", "HGBlock", "HGStem", "SPP", "SPPF", "C1", "C2", "C3", "C2f",
+    "C2fAttn", "ImagePoolingAttn", "ContrastiveHead", "BNContrastiveHead",
+    "C3x", "C3TR", "C3Ghost", "GhostBottleneck", "Bottleneck", "BottleneckCSP",
+    "Proto", "RepC3", "ResNetLayer", "RepNCSPELAN4", "ELAN1", "ADown",
+    "AConv", "SPPELAN", "CBFuse", "CBLinear", "C3k2", "C2fPSA", "C2PSA",
+    "RepVGGDW", "CIB", "C2fCIB", "Attention", "PSA", "SCDown",
+    "C2f_Attention",
 )
 
 
@@ -245,6 +214,122 @@ class C2f(nn.Module):
         return self.cv2(torch.cat(y, 1))
 
 
+from torch.nn import init
+from torch.nn.parameter import Parameter
+class ShuffleAttention(nn.Module):
+
+    def __init__(self, channel=512, reduction=16, G=8):
+        super().__init__()
+        self.G = G
+        self.channel = channel
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.gn = nn.GroupNorm(channel // (2 * G), channel // (2 * G))
+        self.cweight = Parameter(torch.zeros(1, channel // (2 * G), 1, 1))
+        self.cbias = Parameter(torch.ones(1, channel // (2 * G), 1, 1))
+        self.sweight = Parameter(torch.zeros(1, channel // (2 * G), 1, 1))
+        self.sbias = Parameter(torch.ones(1, channel // (2 * G), 1, 1))
+        self.sigmoid = nn.Sigmoid()
+
+    def init_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                init.kaiming_normal_(m.weight, mode='fan_out')
+                if m.bias is not None:
+                    init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm2d):
+                init.constant_(m.weight, 1)
+                init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear):
+                init.normal_(m.weight, std=0.001)
+                if m.bias is not None:
+                    init.constant_(m.bias, 0)
+
+    @staticmethod
+    def channel_shuffle(x, groups):
+        b, c, h, w = x.shape
+        x = x.reshape(b, groups, -1, h, w)
+        x = x.permute(0, 2, 1, 3, 4)
+
+        # flatten
+        x = x.reshape(b, -1, h, w)
+
+        return x
+
+    def forward(self, x):
+        b, c, h, w = x.size()
+        # group into subfeatures
+        x = x.view(b * self.G, -1, h, w)  # bs*G,c//G,h,w
+
+        # channel_split
+        x_0, x_1 = x.chunk(2, dim=1)  # bs*G,c//(2*G),h,w
+
+        # channel attention
+        x_channel = self.avg_pool(x_0)  # bs*G,c//(2*G),1,1
+        x_channel = self.cweight * x_channel + self.cbias  # bs*G,c//(2*G),1,1
+        x_channel = x_0 * self.sigmoid(x_channel)
+
+        # spatial attention
+        x_spatial = self.gn(x_1)  # bs*G,c//(2*G),h,w
+        x_spatial = self.sweight * x_spatial + self.sbias  # bs*G,c//(2*G),h,w
+        x_spatial = x_1 * self.sigmoid(x_spatial)  # bs*G,c//(2*G),h,w
+
+        # concatenate along channel axis
+        out = torch.cat([x_channel, x_spatial], dim=1)  # bs*G,c//G,h,w
+        out = out.contiguous().view(b, -1, h, w)
+
+        # channel shuffle
+        out = self.channel_shuffle(out, 2)
+        return out
+
+class SimAM(torch.nn.Module):
+    def __init__(self, e_lambda=1e-4):
+        super(SimAM, self).__init__()
+        self.activaton = nn.Sigmoid()
+        self.e_lambda = e_lambda
+
+    def __repr__(self):
+        s = self.__class__.__name__ + '('
+        s += ('lambda=%f)' % self.e_lambda)
+        return s
+
+    @staticmethod
+    def get_module_name():
+        return "simam"
+
+    def forward(self, x):
+        b, c, h, w = x.size()
+
+        n = w * h - 1
+
+        x_minus_mu_square = (x - x.mean(dim=[2, 3], keepdim=True)).pow(2)
+        y = x_minus_mu_square / (4 * (x_minus_mu_square.sum(dim=[2, 3], keepdim=True) / n + self.e_lambda)) + 0.5
+
+        return x * self.activaton(y)
+
+
+class C2f_Attention(nn.Module):
+    def __init__(self, c1, c2, n=1, shortcut=False, g=1, e=0.5):
+        """Initializes a CSP bottleneck with 2 convolutions and n Bottleneck blocks for faster processing."""
+        super().__init__()
+        self.c = int(c2 * e)  # hidden channels
+        self.cv1 = Conv(c1, 2 * self.c, 1, 1)
+        self.cv2 = Conv((2 + n) * self.c, c2, 1)  # optional act=FReLU(c2)
+        self.m = nn.ModuleList(Bottleneck(self.c, self.c, shortcut, g, k=((3, 3), (3, 3)), e=1.0) for _ in range(n))
+        self.attention = SimAM()
+
+
+    def forward(self, x):
+        """Forward pass through C2f layer."""
+        y = list(self.cv1(x).chunk(2, 1))
+        y.extend(m(y[-1]) for m in self.m)
+        return self.attention(self.cv2(torch.cat(y, 1)))
+
+    def forward_split(self, x):
+        """Forward pass using split() instead of chunk()."""
+        y = list(self.cv1(x).split((self.c, self.c), 1))
+        y.extend(m(y[-1]) for m in self.m)
+        return self.cv2(torch.cat(y, 1))
+
 class C3(nn.Module):
     """CSP Bottleneck with 3 convolutions."""
 
@@ -432,7 +517,7 @@ class MaxSigmoidAttnBlock(nn.Module):
 
         aw = torch.einsum("bmchw,bnmc->bmhwn", embed, guide)
         aw = aw.max(dim=-1)[0]
-        aw = aw / (self.hc**0.5)
+        aw = aw / (self.hc ** 0.5)
         aw = aw + self.bias[None, :, None, None]
         aw = aw.sigmoid() * self.scale
 
@@ -494,7 +579,7 @@ class ImagePoolingAttn(nn.Module):
         """Executes attention mechanism on input tensor x and guide tensor."""
         bs = x[0].shape[0]
         assert len(x) == self.nf
-        num_patches = self.k**2
+        num_patches = self.k ** 2
         x = [pool(proj(x)).view(bs, -1, num_patches) for (x, proj, pool) in zip(x, self.projections, self.im_pools)]
         x = torch.cat(x, dim=-1).transpose(1, 2)
         q = self.query(text)
@@ -507,7 +592,7 @@ class ImagePoolingAttn(nn.Module):
         v = v.reshape(bs, -1, self.nh, self.hc)
 
         aw = torch.einsum("bnmc,bkmc->bmnk", q, k)
-        aw = aw / (self.hc**0.5)
+        aw = aw / (self.hc ** 0.5)
         aw = F.softmax(aw, dim=-1)
 
         x = torch.einsum("bmnk,bkmc->bnmc", aw, v)
@@ -888,7 +973,7 @@ class Attention(nn.Module):
         self.num_heads = num_heads
         self.head_dim = dim // num_heads
         self.key_dim = int(self.head_dim * attn_ratio)
-        self.scale = self.key_dim**-0.5
+        self.scale = self.key_dim ** -0.5
         nh_kd = self.key_dim * num_heads
         h = dim + nh_kd * 2
         self.qkv = Conv(dim, h, 1, act=False)

@@ -11,24 +11,16 @@ import torch
 import torch.nn as nn
 
 from ultralytics.nn.modules import (
-    AIFI, C1, C2, C2PSA, C3, C3TR, ELAN1, OBB, PSA, SPP, SPPELAN, SPPF, AConv,
-    ADown, Bottleneck, BottleneckCSP, C2f, C2fAttn, C2fCIB, C2fPSA, C3Ghost,
-    C3k2, C3x, CBFuse, CBLinear, Classify, Concat, Conv, Conv2, ConvTranspose,
-    Detect, DWConv, DWConvTranspose2d, Focus, GhostBottleneck, GhostConv, HGBlock,
-    HGStem, ImagePoolingAttn, Pose, RepC3, RepConv, RepNCSPELAN4, RepVGGDW,
-    ResNetLayer, RTDETRDecoder, SCDown, Segment, WorldDetect, v10Detect,
-    CBAM,
+    AIFI, C1, C2, C2PSA, C3, C3TR, ELAN1, OBB, PSA, SPP, SPPELAN, SPPF, AConv, ADown, Bottleneck, BottleneckCSP, C2f, C2fAttn, C2fCIB, C2fPSA, C3Ghost,
+    C3k2, C3x, CBFuse, CBLinear, Classify, Concat, Conv, Conv2, ConvTranspose, Detect, DWConv, DWConvTranspose2d, Focus, GhostBottleneck, GhostConv, HGBlock,
+    HGStem, ImagePoolingAttn, Pose, RepC3, RepConv, RepNCSPELAN4, RepVGGDW, ResNetLayer, RTDETRDecoder, SCDown, Segment, WorldDetect, v10Detect,
+    CBAM, C2f_Attention,
 )
 
 from ultralytics.utils import DEFAULT_CFG_DICT, DEFAULT_CFG_KEYS, LOGGER, colorstr, emojis, yaml_load
 from ultralytics.utils.checks import check_requirements, check_suffix, check_yaml
 from ultralytics.utils.loss import (
-    E2EDetectLoss,
-    v8ClassificationLoss,
-    v8DetectionLoss,
-    v8OBBLoss,
-    v8PoseLoss,
-    v8SegmentationLoss,
+    E2EDetectLoss, v8ClassificationLoss, v8DetectionLoss, v8OBBLoss, v8PoseLoss, v8SegmentationLoss,
 )
 from ultralytics.utils.ops import make_divisible
 from ultralytics.utils.plotting import feature_visualization
@@ -927,10 +919,10 @@ def parse_model(d, ch, verbose=True):  # model_dict, input_channels(3)
 
         n = n_ = max(round(n * depth), 1) if n > 1 else n  # depth gain
         if m in {
-            Classify, Conv, ConvTranspose, GhostConv, Bottleneck, GhostBottleneck, SPP, SPPF, C2fPSA, C2PSA, DWConv,
-            Focus, BottleneckCSP, C1, C2, C2f, C3k2, RepNCSPELAN4, ELAN1, ADown, AConv, SPPELAN, C2fAttn, C3, C3TR,
-            C3Ghost,
-            nn.ConvTranspose2d, DWConvTranspose2d, C3x, RepC3, PSA, SCDown, C2fCIB, }:
+            Classify, Conv, ConvTranspose, GhostConv, Bottleneck, GhostBottleneck, SPP, SPPF, C2fPSA, C2PSA, DWConv, Focus, BottleneckCSP,  C3x, RepC3, PSA,
+            C1, C2, C2f, C3k2, RepNCSPELAN4, ELAN1, ADown, AConv, SPPELAN, C2fAttn, C3, C3TR,C3Ghost, nn.ConvTranspose2d, DWConvTranspose2d, SCDown, C2fCIB,
+            C2f_Attention,
+        }:
             c1, c2 = ch[f], args[0]  # (f, n, m, args) -> [-1, 1, Conv, [64, 3, 2]] c1: 输入通道数, c2: 输出通道数
 
             if c2 != nc:  # if c2 not equal to number of classes (i.e. for Classify() output)
@@ -943,7 +935,9 @@ def parse_model(d, ch, verbose=True):  # model_dict, input_channels(3)
                 )  # num heads
 
             args = [c1, c2, *args[1:]]
-            if m in {BottleneckCSP, C1, C2, C2f, C3k2, C2fAttn, C3, C3TR, C3Ghost, C3x, RepC3, C2fPSA, C2fCIB, C2PSA, }:
+            if m in {BottleneckCSP, C1, C2, C2f, C3k2, C2fAttn, C3, C3TR, C3Ghost, C3x, RepC3, C2fPSA, C2fCIB, C2PSA,
+                     C2f_Attention,
+                     }:
                 args.insert(2, n)  # number of repeats
                 n = 1
             if m is C3k2 and scale in "mlx":  # for M/L/X sizes
