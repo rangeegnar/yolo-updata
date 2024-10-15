@@ -906,7 +906,7 @@ def parse_model(d, ch, verbose=True):  # model_dict, input_channels(3)
         LOGGER.info(f"\n{'':>3}{'from':>20}{'n':>3}{'params':>10}  {'module':<45}{'arguments':<30}")
     ch = [ch]
 
-    layers, save, c2 = [], [], ch[-1]  # layers, savelist, ch out
+    layers, save, c2 = [], [], ch[-1]  # layers, savelist, ch_out
     for i, (f, n, m, args) in enumerate(d["backbone"] + d["head"]):  # from, number, module, args
         # getattr(torch.nn, m[3:])：从 torch.modules.nn 中获取相应的类,比如Conv。  getattr(torch.nn, m[3:]) if "nn." in m || else globals()[m]
         m = getattr(torch.nn, m[3:]) if "nn." in m else globals()[m]  # get module 
