@@ -9,8 +9,8 @@ model = YOLO("boosting/yolov8_cbam.yaml").load("yolov8n.pt")
 
 # 训练模型
 results = model.train(
-    data='A_my_data.yaml',
-    epochs=100,
+    data='data.yaml',
+    epochs=10,
     imgsz=640,
     device='cpu',
     workers=0,
