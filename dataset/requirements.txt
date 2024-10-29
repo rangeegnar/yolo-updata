@@ -46,7 +46,7 @@ json5==0.9.14
 jsonpointer==2.4
 jsonschema==4.19.0
 jsonschema-specifications==2023.7.1
-jupyter==1.0.0
+jupyter==1.1.1
 jupyter-console==6.6.3
 jupyter-events==0.7.0
 jupyter-lsp==2.2.0
